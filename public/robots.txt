@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+Disallow: /login
+Disallow: /logout
+Disallow: /dashboard
+Disallow: /users
+Disallow: /clients
+Disallow: /appointments
+Disallow: /accounting
+Disallow: /reports
+Disallow: /settings
+Disallow: /schedules
+Disallow: /operator
+Disallow: /backups
+Disallow: /profile
+Disallow: /logs
+Disallow: /content
+Disallow: /bot-api
+
+Sitemap: https://nayrica.ir/sitemap.xml

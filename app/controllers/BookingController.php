@@ -435,6 +435,24 @@ public function services() {
         try {
             $apptModel->beginTransaction();
 
+            // Consume the discount atomically with the booking transaction.
+            if ($discount) {
+                $serviceIds = array_values(array_unique(array_map('intval', array_column($schedule, 'service_id'))));
+                $servicePlaceholders = implode(',', array_fill(0, count($serviceIds), '?'));
+                $discountSql = "UPDATE discount_codes
+                    SET used_count = used_count + 1
+                    WHERE id = ? AND is_active = 1 AND deleted_at IS NULL
+                      AND (start_date IS NULL OR start_date <= CURDATE())
+                      AND (end_date IS NULL OR end_date >= CURDATE())
+                      AND (max_uses IS NULL OR used_count < max_uses)
+                      AND (service_id IS NULL OR service_id IN ({$servicePlaceholders}))";
+                $discountParams = array_merge([(int)$discount['code_id']], $serviceIds);
+                $discountStmt = $apptModel->query($discountSql, $discountParams);
+                if ($discountStmt->rowCount() !== 1) {
+                    throw new RuntimeException('کد تخفیف دیگر معتبر نیست یا ظرفیت آن تکمیل شده است');
+                }
+            }
+
             foreach ($schedule as $i => $sc) {
                 $serviceId = $sc['service_id'];
                 $service = null;
@@ -477,11 +495,6 @@ public function services() {
             $_SESSION['booking_error'] = 'خطا در ثبت نوبت. دوباره تلاش کنید.';
             return $this->redirect(BASE_URL . '/booking/preview');
         }
-
-if ($discount) {
-    require_once __DIR__ . '/../models/DiscountCode.php';
-    (new DiscountCode())->incrementUse($discount['code_id']);
-}
 
 // ============ اطلاع‌رسانی به کلاینت (از طریق بله) ============
 $clientModel = new Client();

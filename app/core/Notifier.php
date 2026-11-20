@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../models/Setting.php';
 // اعلان‌رسانی یکپارچه: ابتدا بله (در صورت فعال بودن)، سپس پیامک ۰۰۹۸
 class Notifier {
     private static $api_key = 'a4ec8b2bffa64072e3252ba2a42b8b2bb11759e4a52499fb3c08e712e9a34b30';

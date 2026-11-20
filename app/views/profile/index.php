@@ -23,7 +23,7 @@ $roles = [
         <div class="card p-4 text-center">
             <div class="profile-photo-wrapper mb-3">
                 <?php if (!empty($user['photo'])): ?>
-                    <img src="<?= BASE_URL ?>/public/<?= Helpers::e($user['photo']) ?>?v=<?= time() ?>" alt="عکس پروفایل" class="profile-photo">
+                    <img src="<?= Helpers::e(Helpers::privateMediaUrl($user['photo'])) ?>&v=<?= time() ?>" alt="عکس پروفایل" class="profile-photo">
                 <?php elseif (!empty($clinic_logo)): ?>
                     <img src="<?= BASE_URL ?>/public/<?= Helpers::e($clinic_logo) ?>" alt="لوگو" class="profile-photo" style="object-fit:contain;background:#fff;padding:15px;">
                 <?php else: ?>

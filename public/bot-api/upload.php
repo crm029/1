@@ -22,25 +22,33 @@ function handleUpload($db) {
         jsonError('شماره موبایل نامعتبر');
     }
 
-    $allowed = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
     $maxSize = 3 * 1024 * 1024;
-
-    if (!in_array($file['type'], $allowed)) {
-        jsonError('فرمت فایل مجاز نیست (jpg/png/webp)');
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+        || !is_uploaded_file($file['tmp_name'] ?? '')
+        || (int)$file['size'] <= 0
+        || (int)$file['size'] > $maxSize) {
+        jsonError('فایل نامعتبر یا بزرگ‌تر از ۳ مگابایت است');
     }
-    if ($file['size'] > $maxSize) {
-        jsonError('حجم فایل بیشتر از ۳ مگابایت است');
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($file['tmp_name']);
+    $mimeToExt = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ];
+    if (!isset($mimeToExt[$mime])) {
+        jsonError('فرمت واقعی فایل مجاز نیست (jpg/png/webp)');
+    }
+    $ext = $mimeToExt[$mime];
+    if (!in_array($type, ['receipt', 'client_id_front', 'client_id_back'], true)) {
+        jsonError('نوع فایل نامعتبر');
     }
 
     // پوشه کلاینت
     $clientDir = __DIR__ . '/../uploads/clients/' . $mobile . '/';
     if (!is_dir($clientDir)) {
         mkdir($clientDir, 0755, true);
-    }
-
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
-        $ext = 'jpg';
     }
 
     if ($type === 'receipt') {

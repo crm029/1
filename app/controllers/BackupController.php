@@ -162,7 +162,7 @@ class BackupController extends Controller {
     // بکاپ خودکار (از طریق Cron فراخوانی می‌شود)
     public function cron() {
         $secret = $_POST['secret'] ?? '';
-        $expectedSecret = getenv('NAYRICA_CRON_SECRET') ?: '';
+        $expectedSecret = defined('NAYRICA_CRON_SECRET') ? NAYRICA_CRON_SECRET : (getenv('NAYRICA_CRON_SECRET') ?: '');
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $expectedSecret === '' || !hash_equals((string)$expectedSecret, (string)$secret)) {
             http_response_code(403);

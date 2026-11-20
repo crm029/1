@@ -87,7 +87,7 @@ class BackupController extends Controller {
                 $relative = str_replace('\\', '/', $relative);
 
                 // Never package live credentials or repository history.
-                if (in_array($relative, ['config/config.php', 'public/bot-api/config.php'], true)
+                if (in_array($relative, ['config/config.php', 'config/config.local.php', 'public/bot-api/config.php'], true)
                     || $relative === '.git' || strpos($relative, '.git/') === 0) {
                     continue;
                 }

@@ -156,7 +156,28 @@ class AppointmentController extends Controller {
         $data['appointment']['status'] = 'confirmed';
         $data['appointment']['remaining_amount'] = $data['appointment']['service_price'] - $data['appointment']['deposit_amount'];
 
-        $id = $model->create($data['appointment']);
+        $slot = $data['appointment'];
+        $slotLock = null;
+        try {
+            if (!empty($slot['operator_id'])) {
+                $slotLock = 'appt_' . substr(hash('sha256', (int)$slot['operator_id'] . '|' . $slot['appointment_date']), 0, 48);
+                $lockResult = $model->fetchOne("SELECT GET_LOCK(?, 10) AS acquired", [$slotLock]);
+                if ((int)($lockResult['acquired'] ?? 0) !== 1) {
+                    throw new RuntimeException('زمان انتخابی در حال بررسی است؛ دوباره تلاش کنید.');
+                }
+                if ($model->hasConflict($slot['operator_id'], $slot['appointment_date'], $slot['start_time'], $slot['end_time'])) {
+                    throw new RuntimeException('این زمان هم‌زمان رزرو شده است.');
+                }
+            }
+            $id = $model->create($data['appointment']);
+        } catch (Exception $e) {
+            $_SESSION['error'] = $e->getMessage() ?: 'ثبت نوبت ناموفق بود';
+            return $this->redirect(BASE_URL . '/appointments/create');
+        } finally {
+            if ($slotLock !== null) {
+                $model->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$slotLock]);
+            }
+        }
         $_SESSION['success'] = 'نوبت با کد ' . $data['appointment']['booking_code'] . ' ثبت شد';
         $this->redirect(BASE_URL . '/appointments/show/' . $id);
     }
@@ -584,15 +605,23 @@ class AppointmentController extends Controller {
         $startTs = strtotime($date . ' ' . $start);
         $end = date('H:i', $startTs + ((int)$appt['duration_minutes'] * 60));
 
-        if ($model->hasConflict($appt['operator_id'], $date, $start, $end, $id)) {
-            $_SESSION['error'] = 'این ساعت برای این اپراتور رزرو شده است';
-            return $this->redirect(BASE_URL . '/appointments/reschedule/' . $id);
-        }
+        $slotLock = null;
+        try {
+            if (!empty($appt['operator_id'])) {
+                $slotLock = 'appt_' . substr(hash('sha256', (int)$appt['operator_id'] . '|' . $date), 0, 48);
+                $lockResult = $model->fetchOne("SELECT GET_LOCK(?, 10) AS acquired", [$slotLock]);
+                if ((int)($lockResult['acquired'] ?? 0) !== 1) {
+                    throw new RuntimeException('زمان انتخابی در حال بررسی است؛ دوباره تلاش کنید.');
+                }
+                if ($model->hasConflict($appt['operator_id'], $date, $start, $end, $id)) {
+                    throw new RuntimeException('این ساعت برای این اپراتور رزرو شده است');
+                }
+            }
 
-        $oldDate = $appt['appointment_date'];
-        $oldStart = $appt['start_time'];
+            $oldDate = $appt['appointment_date'];
+            $oldStart = $appt['start_time'];
 
-        $model->edit($id, [
+            $model->edit($id, [
             'appointment_date' => $date,
             'start_time' => $start,
             'end_time' => $end,
@@ -602,7 +631,15 @@ class AppointmentController extends Controller {
             'cancel_card_holder' => null,
             'cancel_requested_at' => null,
             'rescheduled_at' => date('Y-m-d H:i:s'),
-        ]);
+            ]);
+        } catch (Exception $e) {
+            $_SESSION['error'] = $e->getMessage() ?: 'تغییر زمان نوبت ناموفق بود';
+            return $this->redirect(BASE_URL . '/appointments/reschedule/' . $id);
+        } finally {
+            if ($slotLock !== null) {
+                $model->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$slotLock]);
+            }
+        }
 
         // ============ نوتیف: موکول ============
         try {

@@ -1,10 +1,41 @@
+<?php
+$__seoPath = trim((string)($_GET['url'] ?? ''), '/');
+$__seoPublicPaths = ['', 'site/services', 'site/gallery', 'site/contact', 'site/about', 'site/consultation', 'booking'];
+$__seoIsBooking = ($__seoPath === 'booking' || strpos($__seoPath, 'booking/') === 0);
+$__seoCanonicalPath = in_array($__seoPath, $__seoPublicPaths, true) ? $__seoPath : ($__seoIsBooking ? 'booking' : '');
+$__seoCanonical = rtrim(BASE_URL, '/') . '/' . ltrim($__seoCanonicalPath, '/');
+if ($__seoCanonicalPath === '') $__seoCanonical = rtrim(BASE_URL, '/') . '/';
+$__seoTitle = $meta_title ?? (($title ?? 'کلینیک لیزر و زیبایی') . ' | نایریکا');
+$__seoDescription = $meta_description ?? 'کلینیک تخصصی لیزر و زیبایی نایریکا؛ آشنایی با خدمات و دریافت نوبت آنلاین.';
+$__seoRobots = $__seoIsBooking ? 'noindex, nofollow' : ($meta_robots ?? 'index, follow');
+$__seoSchema = [
+    '@context' => 'https://schema.org',
+    '@type' => 'HealthAndBeautyBusiness',
+    'name' => $settings['clinic_name'] ?? 'نایریکا',
+    'url' => rtrim(BASE_URL, '/') . '/',
+    'description' => $__seoDescription,
+];
+if (!empty($settings['clinic_phone'])) $__seoSchema['telephone'] = $settings['clinic_phone'];
+?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= Helpers::e($title ?? 'نایریکا') ?> | کلینیک لیزر و زیبایی</title>
-    <meta name="description" content="<?= Helpers::e($meta_description ?? 'کلینیک تخصصی لیزر و زیبایی نایریکا — رزرو آنلاین نوبت') ?>">
+    <title><?= Helpers::e($__seoTitle) ?></title>
+    <meta name="description" content="<?= Helpers::e($__seoDescription) ?>">
+    <meta name="robots" content="<?= Helpers::e($__seoRobots) ?>">
+    <link rel="canonical" href="<?= Helpers::e($__seoCanonical) ?>">
+    <meta property="og:locale" content="fa_IR">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="نایریکا">
+    <meta property="og:title" content="<?= Helpers::e($__seoTitle) ?>">
+    <meta property="og:description" content="<?= Helpers::e($__seoDescription) ?>">
+    <meta property="og:url" content="<?= Helpers::e($__seoCanonical) ?>">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="<?= Helpers::e($__seoTitle) ?>">
+    <meta name="twitter:description" content="<?= Helpers::e($__seoDescription) ?>">
+    <script type="application/ld+json"><?= json_encode($__seoSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
@@ -23,7 +54,7 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
     <div class="container">
-        <?php 
+        <?php
         require_once __DIR__ . '/../../../app/models/Setting.php';
         $__pubSetting = new Setting();
         $__pubLogo = $__pubSetting->get('clinic_logo', '');
@@ -31,7 +62,7 @@
         ?>
         <a class="navbar-brand d-flex align-items-center gap-2" href="<?= BASE_URL ?>/">
             <?php if ($__pubLogo): ?>
-                <img src="<?= BASE_URL ?>/public/<?= Helpers::e($__pubLogo) ?>" style="max-height:50px;max-width:150px;">
+                <img src="<?= BASE_URL ?>/public/<?= Helpers::e($__pubLogo) ?>" style="max-height:50px;max-width:150px;" alt="<?= Helpers::e($__pubName) ?>">
             <?php else: ?>
                 <?= Helpers::e($__pubName) ?>
             <?php endif; ?>
@@ -45,7 +76,7 @@
                 <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/site/services">خدمات</a></li>
                 <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/site/gallery">گالری</a></li>
                 <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/site/contact">تماس با ما</a></li>
-				<li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/site/about">درباره ما</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/site/about">درباره ما</a></li>
                 <li class="nav-item"><a class="nav-link" href="<?= BASE_URL ?>/site/consultation">درخواست مشاوره</a></li>
             </ul>
             <a href="<?= BASE_URL ?>/booking" class="btn btn-brand">

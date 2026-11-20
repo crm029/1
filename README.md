@@ -32,6 +32,7 @@
 - `APP_URL`
 - `NAYRICA_BOT_API_KEY`
 - `NAYRICA_MEDIA_SECRET`
+- `NAYRICA_CRON_SECRET`
 
 در روش فایل محلی، کلیدها را در بخش `secrets` با نام‌های `bot_api_key`، `media_secret` و `cron_secret` وارد کنید. فایل `config.local.php` در Git نادیده گرفته می‌شود.
 

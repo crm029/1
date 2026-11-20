@@ -201,7 +201,7 @@ public static function isStrongPassword($v) {
             return '';
         }
 
-        $secret = getenv('NAYRICA_MEDIA_SECRET') ?: '';
+        $secret = defined('NAYRICA_MEDIA_SECRET') ? NAYRICA_MEDIA_SECRET : (getenv('NAYRICA_MEDIA_SECRET') ?: '');
         if ($secret === '') return '';
 
         $expires = time() + max(60, min((int)$ttl, 3600));

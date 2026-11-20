@@ -602,13 +602,18 @@ $this->redirect(BASE_URL . '/booking/success');
     private function uploadReceipt() {
         if (empty($_FILES['receipt']['name'])) return null;
         $file = $_FILES['receipt'];
-        $allowed = ['image/jpeg', 'image/png', 'image/jpg'];
         $maxSize = 3 * 1024 * 1024;
-        if (!in_array($file['type'], $allowed)) return null;
-        if ($file['size'] > $maxSize) return null;
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || !is_uploaded_file($file['tmp_name'] ?? '')
+            || (int)$file['size'] <= 0
+            || (int)$file['size'] > $maxSize) return null;
 
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $name = 'receipt_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+        if (!isset($mimeToExt[$mime])) return null;
+        $ext = $mimeToExt[$mime];
+        $name = 'receipt_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
         $dir = __DIR__ . '/../../public/uploads/receipts/';
         if (!is_dir($dir)) mkdir($dir, 0755, true);
         if (!move_uploaded_file($file['tmp_name'], $dir . $name)) return null;

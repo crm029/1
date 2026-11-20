@@ -189,4 +189,26 @@ public static function isStrongPassword($v) {
         return $action;
     }
 
+
+    /**
+     * Build a short-lived signed URL for private client/user uploads.
+     * The media secret must be configured on the server and never committed.
+     */
+    public static function privateMediaUrl($relativePath, $ttl = 900) {
+        $relativePath = ltrim((string)$relativePath, '/');
+        if (!preg_match('#^uploads/(clients|users)/[A-Za-z0-9._/-]+$#', $relativePath)
+            || strpos($relativePath, '..') !== false) {
+            return '';
+        }
+
+        $secret = getenv('NAYRICA_MEDIA_SECRET') ?: '';
+        if ($secret === '') return '';
+
+        $expires = time() + max(60, min((int)$ttl, 3600));
+        $signature = hash_hmac('sha256', $relativePath . '|' . $expires, $secret);
+        $baseUrl = defined('BASE_URL') ? BASE_URL : '';
+        return $baseUrl . '/media.php?file=' . rawurlencode($relativePath)
+            . '&expires=' . $expires . '&signature=' . $signature;
+    }
+
 }

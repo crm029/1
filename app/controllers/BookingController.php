@@ -432,8 +432,23 @@ public function services() {
         $apptModel = new Appointment();
         $bookingCodes = [];
 
+        $bookingLocks = [];
         try {
             $apptModel->beginTransaction();
+
+            // Serialize reservations for the same operator and calendar day.
+            foreach ($schedule as $slot) {
+                $operatorId = (int)($slot['operator_id'] ?? 0);
+                if (!$operatorId) continue; // Random operator is assigned later.
+                $lockName = 'appt_' . substr(hash('sha256', $operatorId . '|' . $slot['date']), 0, 48);
+                if (!isset($bookingLocks[$lockName])) {
+                    $lockResult = $apptModel->fetchOne("SELECT GET_LOCK(?, 10) AS acquired", [$lockName]);
+                    if ((int)($lockResult['acquired'] ?? 0) !== 1) {
+                        throw new RuntimeException('زمان انتخابی در حال بررسی است؛ دوباره تلاش کنید.');
+                    }
+                    $bookingLocks[$lockName] = true;
+                }
+            }
 
             // Consume the discount atomically with the booking transaction.
             if ($discount) {
@@ -458,6 +473,15 @@ public function services() {
                 $service = null;
                 foreach ($services as $s) if ($s['id'] === $serviceId) { $service = $s; break; }
                 if (!$service) continue;
+
+                if (!empty($sc['operator_id']) && $apptModel->hasConflict(
+                    (int)$sc['operator_id'],
+                    $sc['date'],
+                    $sc['start'],
+                    $sc['end']
+                )) {
+                    throw new RuntimeException('این زمان در همین لحظه رزرو شده است. لطفاً زمان دیگری انتخاب کنید.');
+                }
 
                 $code = $apptModel->generateBookingCode();
                 $bookingCodes[] = $code;
@@ -490,9 +514,15 @@ public function services() {
             }
 
             $apptModel->commit();
+            foreach (array_keys($bookingLocks) as $lockName) {
+                $apptModel->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$lockName]);
+            }
         } catch (Exception $e) {
-            $apptModel->rollBack();
-            $_SESSION['booking_error'] = 'خطا در ثبت نوبت. دوباره تلاش کنید.';
+            if ($apptModel->inTransaction()) $apptModel->rollBack();
+            foreach (array_keys($bookingLocks) as $lockName) {
+                try { $apptModel->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$lockName]); } catch (Exception $ignored) {}
+            }
+            $_SESSION['booking_error'] = $e->getMessage() ?: 'خطا در ثبت نوبت. دوباره تلاش کنید.';
             return $this->redirect(BASE_URL . '/booking/preview');
         }
 

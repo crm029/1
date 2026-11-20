@@ -81,15 +81,10 @@
                 </div>
             </div>
         </div>
-        <h6 class="mb-3 mt-4" style="color:<?= BRAND_COLOR ?>;">تنظیمات پیامک (فقط سوپر ادمین)</h6>
+        <h6 class="mb-3 mt-4" style="color:<?= BRAND_COLOR ?>;">تنظیمات پیامک ۰۰۹۸ (فقط سوپر ادمین)</h6>
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="form-label">API Key</label>
-                <input type="text" name="sms_api_key" class="form-control" value="<?= Helpers::e($settings['sms_api_key'] ?? '') ?>">
-                <small class="text-muted">در صورت نیاز</small>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">شماره فرستنده پیامک</label>
+                <label class="form-label">شماره فرستنده ۰۰۹۸</label>
                 <input type="text" name="sms_sender" class="form-control" value="<?= Helpers::e($settings['sms_sender'] ?? '') ?>" placeholder="مثل 30005883803803">
             </div>
             <div class="col-md-6">

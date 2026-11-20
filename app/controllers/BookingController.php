@@ -634,6 +634,11 @@ $this->redirect(BASE_URL . '/booking/success');
             return $this->redirect(BASE_URL . '/booking/track');
         }
 
+        if (!$this->allowTrackAttempt()) {
+            $_SESSION['track_error'] = 'تعداد تلاش‌های شما بیش از حد مجاز است. ۱۵ دقیقه دیگر دوباره تلاش کنید.';
+            return $this->redirect(BASE_URL . '/booking/track');
+        }
+
         $apptModel = new Appointment();
         $appt = $apptModel->findByBookingCode($code);
         if (!$appt || $appt['client_mobile'] !== $mobile) {
@@ -641,6 +646,7 @@ $this->redirect(BASE_URL . '/booking/success');
             return $this->redirect(BASE_URL . '/booking/track');
         }
 
+        $this->clearTrackAttempts();
         $_SESSION['track_code'] = $code;
         $_SESSION['track_mobile'] = $mobile;
         $this->redirect(BASE_URL . '/booking/track/detail');
@@ -752,6 +758,50 @@ $this->redirect(BASE_URL . '/booking/success');
         $this->redirect(BASE_URL . '/booking/track');
     }
 	
+    /**
+     * Rate-limit booking lookups by remote IP. Five failed lookups per 15 minutes.
+     * Only hashed identifiers are persisted; file locking makes increments atomic.
+     */
+    private function trackRateLimitFile() {
+        $dir = __DIR__ . '/../../storage/rate-limits';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0700, true);
+        }
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        return $dir . '/booking-track-' . hash('sha256', $ip) . '.json';
+    }
+
+    private function allowTrackAttempt() {
+        $file = $this->trackRateLimitFile();
+        $fp = @fopen($file, 'c+');
+        if (!$fp) return false;
+        flock($fp, LOCK_EX);
+        $raw = stream_get_contents($fp);
+        $state = json_decode($raw ?: '{}', true) ?: [];
+        $now = time();
+        if (empty($state['started']) || ($now - (int)$state['started']) >= 900) {
+            $state = ['started' => $now, 'count' => 0];
+        }
+        if ((int)($state['count'] ?? 0) >= 5) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return false;
+        }
+        $state['count'] = (int)$state['count'] + 1;
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($state));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return true;
+    }
+
+    private function clearTrackAttempts() {
+        $file = $this->trackRateLimitFile();
+        if (is_file($file)) @unlink($file);
+    }
+
     private function requireBookingClient() {
         if (empty($_SESSION['booking_client_id'])) {
             $this->redirect(BASE_URL . '/booking');

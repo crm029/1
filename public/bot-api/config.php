@@ -2,7 +2,8 @@
 // Shared API configuration for the Nayrica bot.
 header('Content-Type: application/json; charset=utf-8');
 
-$botApiKey = getenv('NAYRICA_BOT_API_KEY') ?: '';
+$config = require __DIR__ . '/../../config/config.php';
+$botApiKey = $config['secrets']['bot_api_key'] ?? '';
 if ($botApiKey === '') {
     http_response_code(503);
     echo json_encode(['status' => 'error', 'message' => 'Bot API is not configured']);
@@ -17,7 +18,6 @@ if (!hash_equals(BOT_API_KEY, (string)$apiKey)) {
     exit;
 }
 
-$config = require __DIR__ . '/../../config/config.php';
 date_default_timezone_set($config['app']['timezone']);
 
 try {

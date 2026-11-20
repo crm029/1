@@ -10,6 +10,11 @@ return [
         'user' => 'YOUR_DATABASE_USER',
         'pass' => 'YOUR_DATABASE_PASSWORD',
     ],
+    'secrets' => [
+        'bot_api_key' => 'REPLACE_WITH_NEW_BOT_API_KEY',
+        'media_secret' => 'REPLACE_WITH_RANDOM_MEDIA_SECRET',
+        'cron_secret' => 'REPLACE_WITH_RANDOM_CRON_SECRET',
+    ],
     'app' => [
         'name' => 'Nayrica',
         'url' => 'https://nayrica.ir',

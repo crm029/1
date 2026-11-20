@@ -46,7 +46,7 @@ class Notifier {
     }
 
     private static function sendViaBale($mobile, $text) {
-        $apiKey = getenv('NAYRICA_BOT_API_KEY') ?: '';
+        $apiKey = defined('NAYRICA_BOT_API_KEY') ? NAYRICA_BOT_API_KEY : (getenv('NAYRICA_BOT_API_KEY') ?: '');
         if ($apiKey === '') return ['status' => 'bale_error', 'message' => 'کلید API بله روی سرور تنظیم نشده است'];
         $ch = curl_init(self::$platform_url . '?api_key=' . urlencode($apiKey));
         curl_setopt_array($ch, [

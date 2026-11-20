@@ -63,7 +63,7 @@ function handleSecretary($db, $action, $input) {
 
             // آدرس کامل رسید
             if (!empty($appt['receipt_image'])) {
-                $appt['receipt_url'] = 'https://nayrica.ir/' . ltrim($appt['receipt_image'], '/');
+                $appt['receipt_url'] = signedPrivateMediaUrl($appt['receipt_image']);
             } else {
                 $appt['receipt_url'] = null;
             }

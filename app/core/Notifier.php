@@ -2,7 +2,6 @@
 require_once __DIR__ . '/../models/Setting.php';
 // اعلان‌رسانی یکپارچه: ابتدا بله (در صورت فعال بودن)، سپس پیامک ۰۰۹۸
 class Notifier {
-    private static $api_key = 'a4ec8b2bffa64072e3252ba2a42b8b2bb11759e4a52499fb3c08e712e9a34b30';
     private static $platform_url = 'https://balebots.nayrica.ir/projects/nayrica-clinic/receive.php';
 
     public static function send($code, $mobile, $placeholders = []) {
@@ -47,11 +46,13 @@ class Notifier {
     }
 
     private static function sendViaBale($mobile, $text) {
-        $ch = curl_init(self::$platform_url . '?api_key=' . urlencode(self::$api_key));
+        $apiKey = getenv('NAYRICA_BOT_API_KEY') ?: '';
+        if ($apiKey === '') return ['status' => 'bale_error', 'message' => 'کلید API بله روی سرور تنظیم نشده است'];
+        $ch = curl_init(self::$platform_url . '?api_key=' . urlencode($apiKey));
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode([
-                'api_key' => self::$api_key,
+                'api_key' => $apiKey,
                 'mobile' => $mobile,
                 'text' => $text,
             ]),

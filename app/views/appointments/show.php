@@ -102,7 +102,7 @@
         <h6 class="mb-3" style="color:<?= BRAND_COLOR ?>;">رسید آپلود شده توسط کلاینت</h6>
         <div class="border rounded p-3 mb-3 text-center">
             <?php if (!empty($appt['receipt_image'])): ?>
-                <img src="<?= BASE_URL ?>/public/<?= Helpers::e($appt['receipt_image']) ?>" style="max-width:400px;border-radius:10px;cursor:pointer;" data-bs-toggle="modal" data-bs-target="#receiptModal">
+                <img src="<?= Helpers::e(Helpers::privateMediaUrl($appt['receipt_image'])) ?>" style="max-width:400px;border-radius:10px;cursor:pointer;" data-bs-toggle="modal" data-bs-target="#receiptModal">
                 <p class="small text-muted mt-2 mb-0">برای بزرگ‌نمایی کلیک کنید</p>
             <?php else: ?>
                 <p class="text-muted mb-0">رسیدی آپلود نشده است</p>
@@ -228,7 +228,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body text-center">
-                <img src="<?= BASE_URL ?>/public/<?= Helpers::e($appt['receipt_image']) ?>" style="max-width:100%;border-radius:10px;">
+                <img src="<?= Helpers::e(Helpers::privateMediaUrl($appt['receipt_image'])) ?>" style="max-width:100%;border-radius:10px;">
             </div>
         </div>
     </div>

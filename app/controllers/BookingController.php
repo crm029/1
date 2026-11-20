@@ -436,18 +436,24 @@ public function services() {
         try {
             $apptModel->beginTransaction();
 
-            // Serialize reservations for the same operator and calendar day.
+            // Acquire all required operator/day locks in a stable order to avoid
+            // lock-order deadlocks when one booking contains multiple services.
+            $lockNames = [];
             foreach ($schedule as $slot) {
                 $operatorId = (int)($slot['operator_id'] ?? 0);
                 if (!$operatorId) continue; // Random operator is assigned later.
                 $lockName = 'appt_' . substr(hash('sha256', $operatorId . '|' . $slot['date']), 0, 48);
-                if (!isset($bookingLocks[$lockName])) {
-                    $lockResult = $apptModel->fetchOne("SELECT GET_LOCK(?, 10) AS acquired", [$lockName]);
-                    if ((int)($lockResult['acquired'] ?? 0) !== 1) {
-                        throw new RuntimeException('زمان انتخابی در حال بررسی است؛ دوباره تلاش کنید.');
-                    }
-                    $bookingLocks[$lockName] = true;
+                $lockNames[$lockName] = true;
+            }
+            $lockNames = array_keys($lockNames);
+            sort($lockNames, SORT_STRING);
+
+            foreach ($lockNames as $lockName) {
+                $lockResult = $apptModel->fetchOne("SELECT GET_LOCK(?, 10) AS acquired", [$lockName]);
+                if ((int)($lockResult['acquired'] ?? 0) !== 1) {
+                    throw new RuntimeException('زمان انتخابی در حال بررسی است؛ دوباره تلاش کنید.');
                 }
+                $bookingLocks[$lockName] = true;
             }
 
             // Consume the discount atomically with the booking transaction.
@@ -655,6 +661,8 @@ $this->redirect(BASE_URL . '/booking/success');
         $mime = $finfo->file($file['tmp_name']);
         $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
         if (!isset($mimeToExt[$mime])) return null;
+        $imageInfo = @getimagesize($file['tmp_name']);
+        if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) return null;
         $ext = $mimeToExt[$mime];
         $name = 'receipt_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
         $dir = __DIR__ . '/../../public/uploads/receipts/';

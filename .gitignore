@@ -2,3 +2,7 @@
 *.sql
 *.zip
 storage/
+/config/config.local.php
+/public/uploads/**
+!/public/uploads/.htaccess
+!/public/uploads/logo.jpg

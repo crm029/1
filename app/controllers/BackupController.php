@@ -214,6 +214,15 @@ class BackupController extends Controller {
 
                 // داده‌ها
                 $rows = $pdo->query("SELECT * FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
+                if ($table === 'settings') {
+                    foreach ($rows as &$settingRow) {
+                        $settingKey = (string)($settingRow['setting_key'] ?? '');
+                        if (preg_match('/password|secret|api[_-]?key|token|username/i', $settingKey)) {
+                            $settingRow['setting_value'] = '[REDACTED - reconfigure after restore]';
+                        }
+                    }
+                    unset($settingRow);
+                }
                 if (!empty($rows)) {
                     $columns = array_keys($rows[0]);
                     $colList = '`' . implode('`,`', $columns) . '`';

@@ -26,7 +26,7 @@
             <?php if ($is_super): ?>
                 <div class="col-md-12">
                     <label class="form-label">لوگوی کلینیک (فقط سوپر ادمین)</label>
-                    <input type="file" name="clinic_logo" class="form-control" accept="image/jpeg,image/png,image/svg+xml">
+                    <input type="file" name="clinic_logo" class="form-control" accept="image/jpeg,image/png">
                     <?php if (!empty($settings['clinic_logo'])): ?>
                         <div class="mt-2">
                             <img src="<?= BASE_URL ?>/public/<?= Helpers::e($settings['clinic_logo']) ?>" style="max-height:80px;border-radius:8px;">

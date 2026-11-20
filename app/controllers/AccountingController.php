@@ -116,6 +116,11 @@ class AccountingController extends Controller {
         $reason = Helpers::clean($_POST['difference_reason'] ?? '');
         $action = $_POST['action'] ?? 'save';
 
+        if ($opening < 0 || $closing < 0) {
+            $_SESSION['error'] = 'موجودی صندوق نمی‌تواند منفی باشد';
+            return $this->redirect(BASE_URL . '/accounting/cash-register?date=' . $date);
+        }
+
         $trModel = new Transaction();
         $stats = $this->calcStats($trModel, $date);
 
@@ -149,7 +154,19 @@ class AccountingController extends Controller {
             $_SESSION['success'] = 'اطلاعات صندوق ذخیره شد';
         }
 
-        $crModel->updateStats($register['id'], $update);
+        if ($action === 'close') {
+            $set = implode('=?,', array_keys($update)) . '=?';
+            $stmt = $crModel->query(
+                "UPDATE cash_register SET {$set} WHERE id = ? AND is_closed = 0",
+                array_merge(array_values($update), [$register['id']])
+            );
+            if ($stmt->rowCount() !== 1) {
+                $_SESSION['error'] = 'صندوق هم‌زمان بسته شده است؛ صفحه را تازه‌سازی کنید';
+                return $this->redirect(BASE_URL . '/accounting/cash-register?date=' . $date);
+            }
+        } else {
+            $crModel->updateStats($register['id'], $update);
+        }
         $this->redirect(BASE_URL . '/accounting/cash-register?date=' . $date);
     }
 
@@ -227,37 +244,41 @@ class AccountingController extends Controller {
         Helpers::verifyCsrf();
 
         $model = new Model();
-        $appt = $model->fetchOne("SELECT * FROM appointments WHERE id = ?", [$id]);
-        if (!$appt || $appt['status'] !== 'done') {
-            $_SESSION['error'] = 'نوبت یافت نشد یا انجام نشده';
-            return $this->redirect(BASE_URL . '/accounting/commissions');
-        }
-        if ($appt['commission_paid']) {
-            $_SESSION['error'] = 'این دستمزد قبلاً پرداخت شده';
-            return $this->redirect(BASE_URL . '/accounting/commissions');
-        }
-
+        require_once __DIR__ . '/../models/FinancialLock.php';
         $lock = new FinancialLock();
         if ($lock->isLocked(date('Y-m-d'))) {
             $_SESSION['error'] = 'دوره مالی جاری قفل شده است';
             return $this->redirect(BASE_URL . '/accounting/commissions');
         }
 
-        $model->query(
-            "UPDATE appointments SET commission_paid = 1, commission_paid_at = NOW() WHERE id = ?",
-            [$id]
-        );
-
-        require_once __DIR__ . '/../models/Transaction.php';
-        $trModel = new Transaction();
-        $trModel->create([
-            'appointment_id' => $id,
-            'type' => 'commission',
-            'amount' => $appt['operator_commission'],
-            'payment_method' => 'cash',
-            'description' => 'دستمزد نوبت ' . $appt['booking_code'],
-            'created_by' => Auth::id(),
-        ]);
+        try {
+            $model->beginTransaction();
+            $appt = $model->fetchOne(
+                "SELECT * FROM appointments WHERE id = ? AND status = 'done' AND deleted_at IS NULL FOR UPDATE",
+                [$id]
+            );
+            if (!$appt || $appt['commission_paid']) {
+                throw new RuntimeException('نوبت یافت نشد یا دستمزد آن قبلاً پرداخت شده است.');
+            }
+            $updated = $model->query(
+                "UPDATE appointments SET commission_paid = 1, commission_paid_at = NOW()
+                 WHERE id = ? AND commission_paid = 0 AND status = 'done'",
+                [$id]
+            );
+            if ($updated->rowCount() !== 1) {
+                throw new RuntimeException('پرداخت دستمزد هم‌زمان انجام شده است.');
+            }
+            $model->query(
+                "INSERT INTO transactions (appointment_id, type, amount, payment_method, description, created_by)
+                 VALUES (?, 'commission', ?, 'cash', ?, ?)",
+                [$id, $appt['operator_commission'], 'دستمزد نوبت ' . $appt['booking_code'], Auth::id()]
+            );
+            $model->commit();
+        } catch (Exception $e) {
+            $model->rollBack();
+            $_SESSION['error'] = $e->getMessage() ?: 'ثبت پرداخت دستمزد ناموفق بود';
+            return $this->redirect(BASE_URL . '/accounting/commissions');
+        }
 
         $_SESSION['success'] = 'دستمزد پرداخت شد';
         $this->redirect(BASE_URL . '/accounting/commissions');
@@ -267,6 +288,7 @@ class AccountingController extends Controller {
         Auth::requireRole(['super_admin', 'admin', 'accountant']);
         Helpers::verifyCsrf();
 
+        require_once __DIR__ . '/../models/FinancialLock.php';
         $lock = new FinancialLock();
         if ($lock->isLocked(date('Y-m-d'))) {
             $_SESSION['error'] = 'دوره مالی جاری قفل شده است';
@@ -274,33 +296,45 @@ class AccountingController extends Controller {
         }
 
         $model = new Model();
-        $rows = $model->fetchAll(
-            "SELECT id, booking_code, operator_commission FROM appointments 
-             WHERE status = 'done' AND operator_id = ? AND commission_paid = 0 AND deleted_at IS NULL",
-            [$operator_id]
-        );
-        if (empty($rows)) {
-            $_SESSION['error'] = 'دستمزد پرداخت‌نشده‌ای برای این اپراتور وجود ندارد';
+        $total = 0;
+        $count = 0;
+        try {
+            $model->beginTransaction();
+            $rows = $model->fetchAll(
+                "SELECT id, booking_code, operator_commission FROM appointments
+                 WHERE status = 'done' AND operator_id = ? AND commission_paid = 0 AND deleted_at IS NULL
+                 FOR UPDATE",
+                [$operator_id]
+            );
+            if (empty($rows)) {
+                throw new RuntimeException('دستمزد پرداخت‌نشده‌ای برای این اپراتور وجود ندارد');
+            }
+
+            foreach ($rows as $row) {
+                $updated = $model->query(
+                    "UPDATE appointments SET commission_paid = 1, commission_paid_at = NOW()
+                     WHERE id = ? AND commission_paid = 0 AND status = 'done'",
+                    [$row['id']]
+                );
+                if ($updated->rowCount() !== 1) {
+                    throw new RuntimeException('یکی از پرداخت‌ها هم‌زمان توسط کاربر دیگری ثبت شده است.');
+                }
+                $model->query(
+                    "INSERT INTO transactions (appointment_id, type, amount, payment_method, description, created_by)
+                     VALUES (?, 'commission', ?, 'cash', ?, ?)",
+                    [$row['id'], $row['operator_commission'], 'دستمزد نوبت ' . $row['booking_code'], Auth::id()]
+                );
+                $total += (int)$row['operator_commission'];
+                $count++;
+            }
+            $model->commit();
+        } catch (Exception $e) {
+            $model->rollBack();
+            $_SESSION['error'] = $e->getMessage() ?: 'پرداخت گروهی دستمزد ناموفق بود';
             return $this->redirect(BASE_URL . '/accounting/commissions');
         }
 
-        require_once __DIR__ . '/../models/Transaction.php';
-        $trModel = new Transaction();
-        $total = 0;
-        foreach ($rows as $r) {
-            $model->query("UPDATE appointments SET commission_paid = 1, commission_paid_at = NOW() WHERE id = ?", [$r['id']]);
-            $trModel->create([
-                'appointment_id' => $r['id'],
-                'type' => 'commission',
-                'amount' => $r['operator_commission'],
-                'payment_method' => 'cash',
-                'description' => 'دستمزد نوبت ' . $r['booking_code'],
-                'created_by' => Auth::id(),
-            ]);
-            $total += (int)$r['operator_commission'];
-        }
-
-        $_SESSION['success'] = 'مجموع ' . number_format($total) . ' تومان دستمزد پرداخت شد (' . count($rows) . ' نوبت)';
+        $_SESSION['success'] = 'مجموع ' . number_format($total) . ' تومان دستمزد پرداخت شد (' . $count . ' نوبت)';
         $this->redirect(BASE_URL . '/accounting/commissions');
     }
 

@@ -6,7 +6,8 @@ class BackupController extends Controller {
 
     public function __construct() {
         $this->backupDir = __DIR__ . '/../../storage/backups/';
-        if (!is_dir($this->backupDir)) mkdir($this->backupDir, 0755, true);
+        if (!is_dir($this->backupDir)) mkdir($this->backupDir, 0700, true);
+        @chmod($this->backupDir, 0700);
     }
 
     public function index() {
@@ -85,6 +86,12 @@ class BackupController extends Controller {
                 $relative = str_replace($rootDir . DIRECTORY_SEPARATOR, '', $path);
                 $relative = str_replace('\\', '/', $relative);
 
+                // Never package live credentials or repository history.
+                if (in_array($relative, ['config/config.php', 'public/bot-api/config.php'], true)
+                    || $relative === '.git' || strpos($relative, '.git/') === 0) {
+                    continue;
+                }
+
                 if ($file->isDir()) {
                     $zip->addEmptyDir($relative);
                 } else {
@@ -92,7 +99,9 @@ class BackupController extends Controller {
                 }
             }
 
+            $zip->addFromString('RESTORE-NOTES.txt', "Nayrica full backup\n\nFor security, live configuration files were excluded:\n- config/config.php\n- public/bot-api/config.php\n\nRestore by creating these files from the deployment's secure configuration template and re-entering credentials. Never commit live credentials.\n");
             $zip->close();
+            @chmod($filepath, 0600);
             $size = filesize($filepath);
 
             $model = new Backup();
@@ -152,11 +161,10 @@ class BackupController extends Controller {
 
     // بکاپ خودکار (از طریق Cron فراخوانی می‌شود)
     public function cron() {
-        $config = require __DIR__ . '/../../config/config.php';
-        $secret = $_GET['secret'] ?? '';
-        $expectedSecret = $config['app']['cron_secret'] ?? 'CHANGE_ME';
+        $secret = $_POST['secret'] ?? '';
+        $expectedSecret = getenv('NAYRICA_CRON_SECRET') ?: '';
 
-        if ($secret !== $expectedSecret) {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST' || $expectedSecret === '' || !hash_equals((string)$expectedSecret, (string)$secret)) {
             http_response_code(403);
             die('دسترسی غیرمجاز');
         }
@@ -205,6 +213,15 @@ class BackupController extends Controller {
 
                 // داده‌ها
                 $rows = $pdo->query("SELECT * FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
+                if ($table === 'settings') {
+                    foreach ($rows as &$settingRow) {
+                        $settingKey = (string)($settingRow['setting_key'] ?? '');
+                        if (preg_match('/password|secret|api[_-]?key|token|username/i', $settingKey)) {
+                            $settingRow['setting_value'] = '[REDACTED - reconfigure after restore]';
+                        }
+                    }
+                    unset($settingRow);
+                }
                 if (!empty($rows)) {
                     $columns = array_keys($rows[0]);
                     $colList = '`' . implode('`,`', $columns) . '`';
@@ -222,7 +239,10 @@ class BackupController extends Controller {
 
             $out .= "SET FOREIGN_KEY_CHECKS=1;\n";
 
-            file_put_contents($filepath, $out);
+            if (file_put_contents($filepath, $out, LOCK_EX) === false) {
+                return ['success' => false, 'error' => 'ذخیره فایل بکاپ ناموفق بود'];
+            }
+            @chmod($filepath, 0600);
             $size = filesize($filepath);
 
             $model = new Backup();

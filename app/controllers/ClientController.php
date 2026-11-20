@@ -134,20 +134,33 @@ class ClientController extends Controller {
     }
 
     private function uploadImage($field, $subdir) {
-        if (empty($_FILES[$field]['name'])) return null;
+        if (empty($_FILES[$field]['name']) || !isset($_FILES[$field]['tmp_name'])) return null;
         $file = $_FILES[$field];
-        $allowed = ['image/jpeg', 'image/png', 'image/jpg'];
         $maxSize = 2 * 1024 * 1024;
 
-        if (!in_array($file['type'], $allowed)) return null;
-        if ($file['size'] > $maxSize) return null;
+        // Only allow the intended destination; never trust the browser-provided MIME or extension.
+        if ($subdir !== 'clients/' ||
+            ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK ||
+            !is_uploaded_file($file['tmp_name']) ||
+            (int)$file['size'] <= 0 ||
+            (int)$file['size'] > $maxSize) {
+            return null;
+        }
 
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $name = 'client_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
-        $dir = __DIR__ . '/../../public/uploads/' . $subdir;
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+        if (!isset($mimeToExt[$mime])) return null;
+
+        $imageInfo = @getimagesize($file['tmp_name']);
+        if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) return null;
+
+        $ext = $mimeToExt[$mime];
+        $name = 'client_' . bin2hex(random_bytes(16)) . '.' . $ext;
+        $dir = __DIR__ . '/../../public/uploads/clients/';
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) return null;
 
         if (!move_uploaded_file($file['tmp_name'], $dir . $name)) return null;
-        return 'uploads/' . $subdir . $name;
+        return 'uploads/clients/' . $name;
     }
 }

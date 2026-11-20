@@ -114,28 +114,35 @@ class SalaryController extends Controller {
             $_SESSION['error'] = 'این حقوق قبلاً پرداخت شده';
             return $this->redirect(BASE_URL . '/accounting/salaries');
         }
-		
-		        require_once __DIR__ . '/../models/FinancialLock.php';
+
+        require_once __DIR__ . '/../models/FinancialLock.php';
         $lock = new FinancialLock();
         if ($lock->isLocked(date('Y-m-d'))) {
             $_SESSION['error'] = 'دوره مالی جاری قفل شده است';
             return $this->redirect(BASE_URL . '/accounting/salaries');
         }
-		
-        $model->edit($id, [
-            'is_paid' => 1,
-            'paid_at' => date('Y-m-d H:i:s'),
-            'paid_by' => Auth::id(),
-        ]);
 
-        $trModel = new Transaction();
-        $trModel->create([
-            'type' => 'salary',
-            'amount' => $salary['amount'],
-            'payment_method' => 'cash',
-            'description' => 'حقوق ' . $salary['full_name'],
-            'created_by' => Auth::id(),
-        ]);
+        try {
+            $model->beginTransaction();
+            $updated = $model->query(
+                "UPDATE salaries SET is_paid = 1, paid_at = NOW(), paid_by = ?
+                 WHERE id = ? AND is_paid = 0 AND deleted_at IS NULL",
+                [Auth::id(), $id]
+            );
+            if ($updated->rowCount() !== 1) {
+                throw new RuntimeException('این حقوق هم‌زمان توسط کاربر دیگری پرداخت شده است.');
+            }
+            $model->query(
+                "INSERT INTO transactions (type, amount, payment_method, description, created_by)
+                 VALUES ('salary', ?, 'cash', ?, ?)",
+                [$salary['amount'], 'حقوق ' . $salary['full_name'], Auth::id()]
+            );
+            $model->commit();
+        } catch (Exception $e) {
+            $model->rollBack();
+            $_SESSION['error'] = $e->getMessage() ?: 'ثبت پرداخت حقوق ناموفق بود';
+            return $this->redirect(BASE_URL . '/accounting/salaries');
+        }
 
         $_SESSION['success'] = 'حقوق پرداخت شد';
         $this->redirect(BASE_URL . '/accounting/salaries');

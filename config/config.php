@@ -12,6 +12,5 @@ return [
         'timezone' => 'Asia/Tehran',
         'debug' => false,
         'brand_color' => '#D1B1B0',
-        'cron_secret' => 'Mahdi.0921',
     ],
 ];

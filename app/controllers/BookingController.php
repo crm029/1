@@ -432,14 +432,62 @@ public function services() {
         $apptModel = new Appointment();
         $bookingCodes = [];
 
+        $bookingLocks = [];
         try {
             $apptModel->beginTransaction();
+
+            // Acquire all required operator/day locks in a stable order to avoid
+            // lock-order deadlocks when one booking contains multiple services.
+            $lockNames = [];
+            foreach ($schedule as $slot) {
+                $operatorId = (int)($slot['operator_id'] ?? 0);
+                if (!$operatorId) continue; // Random operator is assigned later.
+                $lockName = 'appt_' . substr(hash('sha256', $operatorId . '|' . $slot['date']), 0, 48);
+                $lockNames[$lockName] = true;
+            }
+            $lockNames = array_keys($lockNames);
+            sort($lockNames, SORT_STRING);
+
+            foreach ($lockNames as $lockName) {
+                $lockResult = $apptModel->fetchOne("SELECT GET_LOCK(?, 10) AS acquired", [$lockName]);
+                if ((int)($lockResult['acquired'] ?? 0) !== 1) {
+                    throw new RuntimeException('زمان انتخابی در حال بررسی است؛ دوباره تلاش کنید.');
+                }
+                $bookingLocks[$lockName] = true;
+            }
+
+            // Consume the discount atomically with the booking transaction.
+            if ($discount) {
+                $serviceIds = array_values(array_unique(array_map('intval', array_column($schedule, 'service_id'))));
+                $servicePlaceholders = implode(',', array_fill(0, count($serviceIds), '?'));
+                $discountSql = "UPDATE discount_codes
+                    SET used_count = used_count + 1
+                    WHERE id = ? AND is_active = 1 AND deleted_at IS NULL
+                      AND (start_date IS NULL OR start_date <= CURDATE())
+                      AND (end_date IS NULL OR end_date >= CURDATE())
+                      AND (max_uses IS NULL OR used_count < max_uses)
+                      AND (service_id IS NULL OR service_id IN ({$servicePlaceholders}))";
+                $discountParams = array_merge([(int)$discount['code_id']], $serviceIds);
+                $discountStmt = $apptModel->query($discountSql, $discountParams);
+                if ($discountStmt->rowCount() !== 1) {
+                    throw new RuntimeException('کد تخفیف دیگر معتبر نیست یا ظرفیت آن تکمیل شده است');
+                }
+            }
 
             foreach ($schedule as $i => $sc) {
                 $serviceId = $sc['service_id'];
                 $service = null;
                 foreach ($services as $s) if ($s['id'] === $serviceId) { $service = $s; break; }
                 if (!$service) continue;
+
+                if (!empty($sc['operator_id']) && $apptModel->hasConflict(
+                    (int)$sc['operator_id'],
+                    $sc['date'],
+                    $sc['start'],
+                    $sc['end']
+                )) {
+                    throw new RuntimeException('این زمان در همین لحظه رزرو شده است. لطفاً زمان دیگری انتخاب کنید.');
+                }
 
                 $code = $apptModel->generateBookingCode();
                 $bookingCodes[] = $code;
@@ -472,16 +520,17 @@ public function services() {
             }
 
             $apptModel->commit();
+            foreach (array_keys($bookingLocks) as $lockName) {
+                $apptModel->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$lockName]);
+            }
         } catch (Exception $e) {
             $apptModel->rollBack();
-            $_SESSION['booking_error'] = 'خطا در ثبت نوبت. دوباره تلاش کنید.';
+            foreach (array_keys($bookingLocks) as $lockName) {
+                try { $apptModel->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$lockName]); } catch (Exception $ignored) {}
+            }
+            $_SESSION['booking_error'] = $e->getMessage() ?: 'خطا در ثبت نوبت. دوباره تلاش کنید.';
             return $this->redirect(BASE_URL . '/booking/preview');
         }
-
-if ($discount) {
-    require_once __DIR__ . '/../models/DiscountCode.php';
-    (new DiscountCode())->incrementUse($discount['code_id']);
-}
 
 // ============ اطلاع‌رسانی به کلاینت (از طریق بله) ============
 $clientModel = new Client();
@@ -602,15 +651,22 @@ $this->redirect(BASE_URL . '/booking/success');
     private function uploadReceipt() {
         if (empty($_FILES['receipt']['name'])) return null;
         $file = $_FILES['receipt'];
-        $allowed = ['image/jpeg', 'image/png', 'image/jpg'];
         $maxSize = 3 * 1024 * 1024;
-        if (!in_array($file['type'], $allowed)) return null;
-        if ($file['size'] > $maxSize) return null;
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || !is_uploaded_file($file['tmp_name'] ?? '')
+            || (int)$file['size'] <= 0
+            || (int)$file['size'] > $maxSize) return null;
 
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $name = 'receipt_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+        if (!isset($mimeToExt[$mime])) return null;
+        $imageInfo = @getimagesize($file['tmp_name']);
+        if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) return null;
+        $ext = $mimeToExt[$mime];
+        $name = 'receipt_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
         $dir = __DIR__ . '/../../public/uploads/receipts/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) return null;
         if (!move_uploaded_file($file['tmp_name'], $dir . $name)) return null;
         return 'uploads/receipts/' . $name;
     }
@@ -634,6 +690,11 @@ $this->redirect(BASE_URL . '/booking/success');
             return $this->redirect(BASE_URL . '/booking/track');
         }
 
+        if (!$this->allowTrackAttempt()) {
+            $_SESSION['track_error'] = 'تعداد تلاش‌های شما بیش از حد مجاز است. ۱۵ دقیقه دیگر دوباره تلاش کنید.';
+            return $this->redirect(BASE_URL . '/booking/track');
+        }
+
         $apptModel = new Appointment();
         $appt = $apptModel->findByBookingCode($code);
         if (!$appt || $appt['client_mobile'] !== $mobile) {
@@ -641,6 +702,7 @@ $this->redirect(BASE_URL . '/booking/success');
             return $this->redirect(BASE_URL . '/booking/track');
         }
 
+        $this->clearTrackAttempts();
         $_SESSION['track_code'] = $code;
         $_SESSION['track_mobile'] = $mobile;
         $this->redirect(BASE_URL . '/booking/track/detail');
@@ -752,6 +814,50 @@ $this->redirect(BASE_URL . '/booking/success');
         $this->redirect(BASE_URL . '/booking/track');
     }
 	
+    /**
+     * Rate-limit booking lookups by remote IP. Five failed lookups per 15 minutes.
+     * Only hashed identifiers are persisted; file locking makes increments atomic.
+     */
+    private function trackRateLimitFile() {
+        $dir = __DIR__ . '/../../storage/rate-limits';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0700, true);
+        }
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        return $dir . '/booking-track-' . hash('sha256', $ip) . '.json';
+    }
+
+    private function allowTrackAttempt() {
+        $file = $this->trackRateLimitFile();
+        $fp = @fopen($file, 'c+');
+        if (!$fp) return false;
+        flock($fp, LOCK_EX);
+        $raw = stream_get_contents($fp);
+        $state = json_decode($raw ?: '{}', true) ?: [];
+        $now = time();
+        if (empty($state['started']) || ($now - (int)$state['started']) >= 900) {
+            $state = ['started' => $now, 'count' => 0];
+        }
+        if ((int)($state['count'] ?? 0) >= 5) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return false;
+        }
+        $state['count'] = (int)$state['count'] + 1;
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($state));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return true;
+    }
+
+    private function clearTrackAttempts() {
+        $file = $this->trackRateLimitFile();
+        if (is_file($file)) @unlink($file);
+    }
+
     private function requireBookingClient() {
         if (empty($_SESSION['booking_client_id'])) {
             $this->redirect(BASE_URL . '/booking');

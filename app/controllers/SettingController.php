@@ -33,7 +33,6 @@ class SettingController extends Controller {
         if ($isSuper) {
             $model->set('sms_enabled', isset($_POST['sms_enabled']) ? '1' : '0', Auth::id());
             $model->set('bale_enabled', isset($_POST['bale_enabled']) ? '1' : '0', Auth::id());
-            $model->set('sms_api_key', Helpers::clean($_POST['sms_api_key'] ?? ''), Auth::id());
             $model->set('sms_sender', Helpers::clean($_POST['sms_sender'] ?? ''), Auth::id());
             $model->set('sms_username', Helpers::clean($_POST['sms_username'] ?? ''), Auth::id());
             $model->set('sms_password', Helpers::clean($_POST['sms_password'] ?? ''), Auth::id());

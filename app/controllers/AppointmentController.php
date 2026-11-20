@@ -407,8 +407,8 @@ class AppointmentController extends Controller {
         }
 
         require_once __DIR__ . '/../models/FinancialLock.php';
-        $lock = new FinancialLock();
-        if ($lock->isLocked($appt['appointment_date'])) {
+        $financialLock = new FinancialLock();
+        if ($financialLock->isLocked($appt['appointment_date'])) {
             $_SESSION['error'] = 'این دوره مالی قفل شده و قابل تغییر نیست';
             return $this->redirect(BASE_URL . '/appointments/show/' . $id);
         }
@@ -418,37 +418,40 @@ class AppointmentController extends Controller {
         }
 
         $paid = (int)($_POST['paid_amount'] ?? 0);
+        $expected = (int)($appt['remaining_amount'] ?? 0);
         $method = $_POST['payment_method'] ?? 'cash';
-        if (!in_array($method, ['cash', 'pos', 'card_to_card'])) $method = 'cash';
-        if ($paid <= 0) {
-            $_SESSION['error'] = 'مبلغ دریافتی باید مثبت باشد';
+        if (!in_array($method, ['cash', 'pos', 'card_to_card'], true)) $method = 'cash';
+        if ($expected <= 0 || $paid !== $expected) {
+            $_SESSION['error'] = 'مبلغ تسویه باید دقیقاً برابر مانده قابل پرداخت باشد (' . number_format($expected) . ' تومان)';
             return $this->redirect(BASE_URL . '/appointments/show/' . $id);
         }
 
-        $model->edit($id, [
-            'status' => 'paid',
-            'paid_amount' => $paid,
-            'payment_method' => $method,
-            'paid_by' => Auth::id(),
-            'paid_at' => date('Y-m-d H:i:s'),
-        ]);
+        try {
+            $model->beginTransaction();
+            $updated = $model->query(
+                "UPDATE appointments
+                 SET status = 'paid', paid_amount = ?, payment_method = ?, paid_by = ?, paid_at = NOW()
+                 WHERE id = ? AND status = 'awaiting_service' AND deleted_at IS NULL",
+                [$paid, $method, Auth::id(), $id]
+            );
+            if ($updated->rowCount() !== 1) {
+                throw new RuntimeException('این نوبت هم‌زمان توسط کاربر دیگری تغییر کرده است.');
+            }
+
+            $model->query(
+                "INSERT INTO transactions (appointment_id, client_id, type, amount, payment_method, description, created_by)
+                 VALUES (?, ?, 'payment', ?, ?, ?, ?)",
+                [$id, $appt['client_id'], $paid, $method, 'تسویه نوبت ' . $appt['booking_code'], Auth::id()]
+            );
+            $model->commit();
+        } catch (Exception $e) {
+            $model->rollBack();
+            $_SESSION['error'] = $e->getMessage() ?: 'ثبت تسویه ناموفق بود';
+            return $this->redirect(BASE_URL . '/appointments/show/' . $id);
+        }
 
         (new ActivityLog())->log('settle', 'تسویه نوبت ' . $appt['booking_code'], 'appointments', $id);
 
-        // ثبت خودکار تراکنش تسویه
-        require_once __DIR__ . '/../models/Transaction.php';
-        $trModel = new Transaction();
-        $trModel->create([
-            'appointment_id' => $id,
-            'client_id' => $appt['client_id'],
-            'type' => 'payment',
-            'amount' => $paid,
-            'payment_method' => $method,
-            'description' => 'تسویه نوبت ' . $appt['booking_code'],
-            'created_by' => Auth::id(),
-        ]);
-
-        // ============ نوتیف: تسویه ============
         try {
             Notifier::send('settled', $appt['client_mobile'], [
                 'client_name' => $appt['client_name'],

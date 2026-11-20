@@ -34,7 +34,7 @@ class Notifier {
 
         if ($baleEnabled) {
             $baleResult = self::sendViaBale($mobile, $text);
-            if (in_array(($baleResult['status'] ?? ''), ['sent', 'success', 'ok'], true)) {
+            if (!in_array(($baleResult['status'] ?? ''), ['skipped', 'bale_error', 'error', 'failed'], true)) {
                 return $baleResult;
             }
         }
@@ -47,7 +47,7 @@ class Notifier {
     }
 
     private static function sendViaBale($mobile, $text) {
-        $ch = curl_init(self::$platform_url);
+        $ch = curl_init(self::$platform_url . '?api_key=' . urlencode(self::$api_key));
         curl_setopt_array($ch, [
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode([

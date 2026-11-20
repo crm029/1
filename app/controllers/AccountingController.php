@@ -116,6 +116,11 @@ class AccountingController extends Controller {
         $reason = Helpers::clean($_POST['difference_reason'] ?? '');
         $action = $_POST['action'] ?? 'save';
 
+        if ($opening < 0 || $closing < 0) {
+            $_SESSION['error'] = 'موجودی صندوق نمی‌تواند منفی باشد';
+            return $this->redirect(BASE_URL . '/accounting/cash-register?date=' . $date);
+        }
+
         $trModel = new Transaction();
         $stats = $this->calcStats($trModel, $date);
 
@@ -149,7 +154,19 @@ class AccountingController extends Controller {
             $_SESSION['success'] = 'اطلاعات صندوق ذخیره شد';
         }
 
-        $crModel->updateStats($register['id'], $update);
+        if ($action === 'close') {
+            $set = implode('=?,', array_keys($update)) . '=?';
+            $stmt = $crModel->query(
+                "UPDATE cash_register SET {$set} WHERE id = ? AND is_closed = 0",
+                array_merge(array_values($update), [$register['id']])
+            );
+            if ($stmt->rowCount() !== 1) {
+                $_SESSION['error'] = 'صندوق هم‌زمان بسته شده است؛ صفحه را تازه‌سازی کنید';
+                return $this->redirect(BASE_URL . '/accounting/cash-register?date=' . $date);
+            }
+        } else {
+            $crModel->updateStats($register['id'], $update);
+        }
         $this->redirect(BASE_URL . '/accounting/cash-register?date=' . $date);
     }
 

@@ -19,7 +19,7 @@ class Notifier {
         foreach ($placeholders as $key => $value) {
             $text = str_replace('{' . $key . '}', (string)$value, $text);
         }
-        $text = preg_replace('/\\{[a-z_]+\\}/', '', $text);
+        $text = preg_replace('/\{[a-z_]+\}/', '', $text);
 
         return self::sendText($mobile, $text);
     }

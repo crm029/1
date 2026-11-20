@@ -40,14 +40,14 @@
                 <label class="form-label">تصویر روی فرم (اختیاری - در صورت تغییر)</label>
                 <input type="file" name="id_card_front" class="form-control" accept="image/jpeg,image/png">
                 <?php if ($client['id_card_front']): ?>
-                    <img src="<?= BASE_URL ?>/public/<?= Helpers::e($client['id_card_front']) ?>" style="max-width:120px;margin-top:8px;border-radius:8px;">
+                    <img src="<?= Helpers::e(Helpers::privateMediaUrl($client['id_card_front'])) ?>" style="max-width:120px;margin-top:8px;border-radius:8px;">
                 <?php endif; ?>
             </div>
             <div class="col-md-6">
                 <label class="form-label">تصویر پشت فرم (اختیاری - در صورت تغییر)</label>
                 <input type="file" name="id_card_back" class="form-control" accept="image/jpeg,image/png">
                 <?php if ($client['id_card_back']): ?>
-                    <img src="<?= BASE_URL ?>/public/<?= Helpers::e($client['id_card_back']) ?>" style="max-width:120px;margin-top:8px;border-radius:8px;">
+                    <img src="<?= Helpers::e(Helpers::privateMediaUrl($client['id_card_back'])) ?>" style="max-width:120px;margin-top:8px;border-radius:8px;">
                 <?php endif; ?>
             </div>
         </div>

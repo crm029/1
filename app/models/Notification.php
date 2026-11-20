@@ -8,12 +8,14 @@ class Notification extends Model {
 
         $settingModel = new Setting();
         $baleEnabled = $settingModel->get('bale_enabled', '0') === '1';
-        $smsEnabled  = $settingModel->get('sms_enabled', '0') === '1';
+        $smsEnabled = $settingModel->get('sms_enabled', '0') === '1';
 
-        $viaBale = ($baleEnabled && !empty($client['bale_chat_id'])) ? 1 : 0;
-        $viaSms  = ($smsEnabled && empty($client['bale_chat_id'])) ? 1 : 0;
+        // ارسال همه اعلان‌ها از مسیر واحد Notifier؛ پیامک فقط از ۰۰۹۸ است.
+        $result = Notifier::sendText($client['mobile'], $message);
 
-        // ذخیره لاگ
+        $viaBale = ($baleEnabled && in_array(($result['status'] ?? ''), ['sent', 'success', 'ok'], true)) ? 1 : 0;
+        $viaSms = (($result['status'] ?? '') === 'sms_sent') ? 1 : 0;
+
         $this->insert('notification_logs', [
             'client_id' => $clientId,
             'mobile' => $client['mobile'],
@@ -23,54 +25,6 @@ class Notification extends Model {
             'sent_via_sms' => $viaSms,
         ]);
 
-        if ($viaBale) {
-            return $this->sendBale($client['bale_chat_id'], $message);
-        }
-        if ($viaSms) {
-            return $this->sendSms($client['mobile'], $message);
-        }
-        return false;
-    }
-
-    private function sendSms($mobile, $message) {
-        $settingModel = new Setting();
-        $apiKey = $settingModel->get('sms_api_key', '');
-        $sender = $settingModel->get('sms_sender', '');
-        if (!$apiKey || !$sender) return false;
-
-        $url = 'https://api.kavenegar.com/v1/' . $apiKey . '/sms/send.json';
-        $data = ['receptor' => $mobile, 'message' => $message, 'sender' => $sender];
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($data),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-        ]);
-        $res = curl_exec($ch);
-        curl_close($ch);
-        return $res !== false;
-    }
-
-    private function sendBale($chatId, $message) {
-        $settingModel = new Setting();
-        $token = $settingModel->get('bale_token', '');
-        if (!$token) return false;
-
-        $url = "https://tapi.bale.ai/bot{$token}/sendMessage";
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query([
-                'chat_id' => $chatId,
-                'text' => $message,
-            ]),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-        ]);
-        $res = curl_exec($ch);
-        curl_close($ch);
-        return $res !== false;
+        return $result;
     }
 }

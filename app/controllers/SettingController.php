@@ -31,9 +31,10 @@ class SettingController extends Controller {
 
         // فقط سوپر ادمین
         if ($isSuper) {
+            // حذف تنظیم قدیمی کاوه‌نگار از دیتابیس در زمان ذخیره تنظیمات
+            $model->query("DELETE FROM settings WHERE setting_key = ?", ['sms_api_key']);
             $model->set('sms_enabled', isset($_POST['sms_enabled']) ? '1' : '0', Auth::id());
             $model->set('bale_enabled', isset($_POST['bale_enabled']) ? '1' : '0', Auth::id());
-            $model->set('sms_api_key', Helpers::clean($_POST['sms_api_key'] ?? ''), Auth::id());
             $model->set('sms_sender', Helpers::clean($_POST['sms_sender'] ?? ''), Auth::id());
             $model->set('sms_username', Helpers::clean($_POST['sms_username'] ?? ''), Auth::id());
             $model->set('sms_password', Helpers::clean($_POST['sms_password'] ?? ''), Auth::id());

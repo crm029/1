@@ -1,74 +1,81 @@
 <?php
-// ============================================
-// اطلاع‌رسانی (اول بله، اگر عضو نبود پیامک)
-// ============================================
-
+require_once __DIR__ . '/../models/Setting.php';
+// اعلان‌رسانی یکپارچه: ابتدا بله (در صورت فعال بودن)، سپس پیامک ۰۰۹۸
 class Notifier {
     private static $api_key = 'a4ec8b2bffa64072e3252ba2a42b8b2bb11759e4a52499fb3c08e712e9a34b30';
     private static $platform_url = 'https://balebots.nayrica.ir/projects/nayrica-clinic/receive.php';
 
-    // ============================================
-    // ارسال اعلان: اول بله، اگر نبود پیامک
-    // ============================================
     public static function send($code, $mobile, $placeholders = []) {
         if (empty($mobile)) return false;
 
         $model = new Model();
-
         $template = $model->fetchOne(
             "SELECT text FROM notification_templates WHERE code = ? AND is_active = 1 LIMIT 1",
             [$code]
         );
-
         if (!$template) return false;
 
         $text = $template['text'];
         foreach ($placeholders as $key => $value) {
-            $text = str_replace('{' . $key . '}', $value, $text);
+            $text = str_replace('{' . $key . '}', (string)$value, $text);
         }
         $text = preg_replace('/\{[a-z_]+\}/', '', $text);
 
-        // ۱. تلاش با بله
-        $bale_result = self::sendViaBale($mobile, $text);
+        return self::sendText($mobile, $text);
+    }
 
-        // اگه کاربر توی ربات نبود → پیامک
-        if (($bale_result['status'] ?? '') === 'skipped') {
+    // مسیر مشترک برای تمام اعلان‌های متنی؛ هیچ وابستگی‌ای به کاوه‌نگار ندارد.
+    public static function sendText($mobile, $text) {
+        if (empty($mobile) || trim((string)$text) === '') return false;
+
+        $settings = new Setting();
+        $baleEnabled = $settings->get('bale_enabled', '0') === '1';
+        $smsEnabled = $settings->get('sms_enabled', '0') === '1';
+
+        if ($baleEnabled) {
+            $baleResult = self::sendViaBale($mobile, $text);
+            if (!in_array(($baleResult['status'] ?? ''), ['skipped', 'bale_error', 'error', 'failed'], true)) {
+                return $baleResult;
+            }
+        }
+
+        if ($smsEnabled) {
             return self::sendViaSms($mobile, $text);
         }
 
-        return $bale_result;
+        return ['status' => 'no_delivery_channel'];
     }
 
-    // ============================================
-    // ارسال از طریق بله
-    // ============================================
     private static function sendViaBale($mobile, $text) {
-        $ch = curl_init(self::$platform_url . '?api_key=' . self::$api_key);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-            'api_key' => self::$api_key,
-            'mobile' => $mobile,
-            'text' => $text,
-        ]));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $ch = curl_init(self::$platform_url . '?api_key=' . urlencode(self::$api_key));
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode([
+                'api_key' => self::$api_key,
+                'mobile' => $mobile,
+                'text' => $text,
+            ]),
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 10,
+        ]);
         $res = curl_exec($ch);
+        $error = curl_error($ch);
         curl_close($ch);
 
-        return json_decode($res, true) ?? [];
+        if ($res === false) {
+            return ['status' => 'bale_error', 'message' => $error];
+        }
+        return json_decode($res, true) ?? ['status' => 'bale_error'];
     }
 
-    // ============================================
-    // ارسال از طریق پیامک (0098sms)
-    // ============================================
     private static function sendViaSms($mobile, $text) {
         $model = new Model();
-
-        // چک فعال بودن پیامک
         $enabled = $model->fetchOne("SELECT setting_value FROM settings WHERE setting_key = 'sms_enabled' LIMIT 1");
-        if (empty($enabled['setting_value'])) {
+        if (($enabled['setting_value'] ?? '0') !== '1') {
             return ['status' => 'sms_disabled'];
         }
 
@@ -77,7 +84,7 @@ class Notifier {
         $password = $model->fetchOne("SELECT setting_value FROM settings WHERE setting_key = 'sms_password' LIMIT 1");
 
         if (empty($sender['setting_value']) || empty($username['setting_value']) || empty($password['setting_value'])) {
-            return ['status' => 'error', 'message' => 'تنظیمات پیامک کامل نیست'];
+            return ['status' => 'error', 'message' => 'تنظیمات پیامک ۰۰۹۸ کامل نیست'];
         }
 
         $params = http_build_query([
@@ -89,17 +96,23 @@ class Notifier {
             'DOMAIN' => '0098',
         ]);
 
-        $url = 'https://www.0098vip.com/sendsmslink.aspx?' . $params;
-
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        $ch = curl_init('https://www.0098vip.com/sendsmslink.aspx?' . $params);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 15,
+        ]);
         $res = curl_exec($ch);
+        $error = curl_error($ch);
         curl_close($ch);
 
-        $code = (int)trim($res);
+        if ($res === false) {
+            return ['status' => 'sms_error', 'message' => $error];
+        }
 
+        $code = (int)trim($res);
         return [
             'status' => ($code === 0) ? 'sms_sent' : 'sms_error',
             'code' => $code,

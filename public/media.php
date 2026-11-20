@@ -3,7 +3,8 @@
 $relativePath = ltrim((string)($_GET['file'] ?? ''), '/');
 $expires = (int)($_GET['expires'] ?? 0);
 $signature = (string)($_GET['signature'] ?? '');
-$secret = getenv('NAYRICA_MEDIA_SECRET') ?: '';
+$config = require __DIR__ . '/../config/config.php';
+$secret = $config['secrets']['media_secret'] ?? '';
 
 $deny = static function () {
     http_response_code(404);

@@ -67,6 +67,7 @@ function handleAppointments($db, $action, $input) {
             );
             $appt['jalali_date'] = sprintf('%04d/%02d/%02d', $jy, $jm, $jd);
             $appt['status_label'] = translateStatus($appt['status']);
+            $appt['receipt_url'] = !empty($appt['receipt_image']) ? signedPrivateMediaUrl($appt['receipt_image']) : null;
             $appt['hours_left'] = round($hoursLeft, 1);
             $appt['can_reschedule'] = $hoursLeft >= 48;
             $appt['can_cancel'] = in_array($appt['status'], ['pending_receipt', 'confirmed', 'awaiting_service', 'paid']);

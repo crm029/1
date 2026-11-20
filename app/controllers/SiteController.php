@@ -8,37 +8,37 @@ class SiteController extends Controller {
         $serviceModel = new Service();
         $settingModel = new Setting();
         $settings = $settingModel->all();
-
-        // خدمات عمومی
         $services = $serviceModel->all(['is_active' => 1]);
 
         $this->view('site/home', [
             'title' => 'خانه',
+            'meta_title' => 'کلینیک لیزر و زیبایی نایریکا | رزرو آنلاین نوبت',
+            'meta_description' => 'در کلینیک نایریکا با خدمات لیزر و زیبایی آشنا شوید و برای دریافت خدمات، نوبت آنلاین رزرو کنید.',
             'services' => $services,
             'settings' => $settings,
         ]);
     }
 
     public function services() {
-    $serviceModel = new Service();
-    $settingModel = new Setting();
-    $services = $serviceModel->all(['is_active' => 1]);
+        $serviceModel = new Service();
+        $settingModel = new Setting();
+        $services = $serviceModel->all(['is_active' => 1]);
+        $catModel = new ServiceCategory();
+        $allCategories = $catModel->activeList();
+        $usedCategoryIds = array_unique(array_column($services, 'category_id'));
+        $categories = array_filter($allCategories, function($c) use ($usedCategoryIds) {
+            return in_array($c['id'], $usedCategoryIds);
+        });
 
-    // فقط دسته‌هایی که خدمت فعال دارن
-    $catModel = new ServiceCategory();
-    $allCategories = $catModel->activeList();
-    $usedCategoryIds = array_unique(array_column($services, 'category_id'));
-    $categories = array_filter($allCategories, function($c) use ($usedCategoryIds) {
-        return in_array($c['id'], $usedCategoryIds);
-    });
-
-    $this->view('site/services', [
-        'title' => 'خدمات',
-        'services' => $services,
-        'categories' => array_values($categories),
-        'settings' => $settingModel->all(),
-    ]);
-}
+        $this->view('site/services', [
+            'title' => 'خدمات',
+            'meta_title' => 'خدمات لیزر و زیبایی نایریکا',
+            'meta_description' => 'فهرست خدمات فعال کلینیک نایریکا را مشاهده کنید و برای انتخاب خدمات موردنظر، نوبت آنلاین بگیرید.',
+            'services' => $services,
+            'categories' => array_values($categories),
+            'settings' => $settingModel->all(),
+        ]);
+    }
 
     public function gallery() {
         require_once __DIR__ . '/../models/Gallery.php';
@@ -48,7 +48,9 @@ class SiteController extends Controller {
         $commentModel = new Comment();
 
         $this->view('site/gallery', [
-            'title' => 'گالری',
+            'title' => 'گالری نمونه‌کارها',
+            'meta_title' => 'گالری نمونه‌کارهای کلینیک نایریکا',
+            'meta_description' => 'نمونه‌کارها و تصاویر قبل و بعد خدمات زیبایی کلینیک نایریکا را مشاهده کنید.',
             'settings' => $settingModel->all(),
             'gallery' => $galleryModel->active(),
             'comments' => $commentModel->approved(),
@@ -59,6 +61,8 @@ class SiteController extends Controller {
         $settingModel = new Setting();
         $this->view('site/contact', [
             'title' => 'تماس با ما',
+            'meta_title' => 'تماس با کلینیک نایریکا | آدرس و شماره تماس',
+            'meta_description' => 'اطلاعات تماس و نشانی کلینیک نایریکا را مشاهده کنید و برای دریافت راهنمایی با ما در ارتباط باشید.',
             'settings' => $settingModel->all(),
         ]);
     }
@@ -67,6 +71,8 @@ class SiteController extends Controller {
         $settingModel = new Setting();
         $this->view('site/consultation', [
             'title' => 'درخواست مشاوره',
+            'meta_title' => 'درخواست مشاوره زیبایی | کلینیک نایریکا',
+            'meta_description' => 'برای دریافت راهنمایی درباره خدمات لیزر و زیبایی، درخواست مشاوره خود را در کلینیک نایریکا ثبت کنید.',
             'settings' => $settingModel->all(),
         ]);
     }
@@ -101,11 +107,13 @@ class SiteController extends Controller {
         $_SESSION['success'] = 'درخواست شما ثبت شد. به‌زودی با شما تماس می‌گیریم.';
         $this->redirect(BASE_URL . '/site/consultation');
     }
-	
-	    public function about() {
+
+    public function about() {
         $settingModel = new Setting();
         $this->view('site/about', [
             'title' => 'درباره ما',
+            'meta_title' => 'درباره کلینیک نایریکا',
+            'meta_description' => 'با کلینیک نایریکا، رویکرد ما و خدمات لیزر و زیبایی آشنا شوید.',
             'settings' => $settingModel->all(),
         ]);
     }

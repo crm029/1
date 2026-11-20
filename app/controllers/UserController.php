@@ -216,16 +216,23 @@ public function editForm($id) {
     }
 
     private function uploadPhoto($file) {
-        $allowed = ['image/jpeg', 'image/png', 'image/jpg'];
         $maxSize = 2 * 1024 * 1024;
+        if (!isset($file['tmp_name']) ||
+            ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK ||
+            !is_uploaded_file($file['tmp_name']) ||
+            (int)$file['size'] <= 0 ||
+            (int)$file['size'] > $maxSize) return false;
 
-        if (!in_array($file['type'], $allowed)) return false;
-        if ($file['size'] > $maxSize) return false;
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+        if (!isset($mimeToExt[$mime])) return false;
+        $imageInfo = @getimagesize($file['tmp_name']);
+        if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) return false;
 
-        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-        $name = 'user_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . strtolower($ext);
+        $name = 'user_' . bin2hex(random_bytes(16)) . '.' . $mimeToExt[$mime];
         $dir = __DIR__ . '/../../public/uploads/users/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) return false;
 
         if (!move_uploaded_file($file['tmp_name'], $dir . $name)) return false;
         return 'uploads/users/' . $name;

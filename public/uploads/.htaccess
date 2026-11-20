@@ -1,4 +1,7 @@
 Options -Indexes
+RewriteEngine On
+# Client identity documents, payment receipts and user photos must use signed media URLs.
+RewriteRule ^(clients|users)(/|$) - [F,NC,L]
 <FilesMatch "(?i)\.(php[0-9]*|pht|phtm|phtml|phar|cgi|pl|py|sh|shtml)$">
     Require all denied
 </FilesMatch>

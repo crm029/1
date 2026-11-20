@@ -18,7 +18,7 @@ function handleUpload($db) {
     $type = $_POST['type'] ?? 'receipt'; // receipt | client_id_front | client_id_back
     $mobile = normalizeMobile($_POST['mobile'] ?? '');
 
-    if (strlen($mobile) !== 11) {
+    if (!preg_match('/^09[0-9]{9}$/', $mobile)) {
         jsonError('شماره موبایل نامعتبر');
     }
 
@@ -40,6 +40,10 @@ function handleUpload($db) {
     if (!isset($mimeToExt[$mime])) {
         jsonError('فرمت واقعی فایل مجاز نیست (jpg/png/webp)');
     }
+    $imageInfo = @getimagesize($file['tmp_name']);
+    if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) {
+        jsonError('محتوای فایل تصویر معتبر نیست');
+    }
     $ext = $mimeToExt[$mime];
     if (!in_array($type, ['receipt', 'client_id_front', 'client_id_back'], true)) {
         jsonError('نوع فایل نامعتبر');
@@ -47,8 +51,8 @@ function handleUpload($db) {
 
     // پوشه کلاینت
     $clientDir = __DIR__ . '/../uploads/clients/' . $mobile . '/';
-    if (!is_dir($clientDir)) {
-        mkdir($clientDir, 0755, true);
+    if (!is_dir($clientDir) && !mkdir($clientDir, 0755, true) && !is_dir($clientDir)) {
+        jsonError('امکان ایجاد پوشه ذخیره فایل وجود ندارد');
     }
 
     if ($type === 'receipt') {

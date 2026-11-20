@@ -518,7 +518,7 @@ public function services() {
                 $apptModel->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$lockName]);
             }
         } catch (Exception $e) {
-            if ($apptModel->inTransaction()) $apptModel->rollBack();
+            $apptModel->rollBack();
             foreach (array_keys($bookingLocks) as $lockName) {
                 try { $apptModel->fetchOne("SELECT RELEASE_LOCK(?) AS released", [$lockName]); } catch (Exception $ignored) {}
             }

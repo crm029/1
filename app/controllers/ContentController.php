@@ -175,18 +175,25 @@ class ContentController extends Controller {
 
     // ==================== کمکی ====================
     private function uploadImage($field) {
-        if (empty($_FILES[$field]['name'])) return null;
+        if (empty($_FILES[$field]['name']) || !isset($_FILES[$field]['tmp_name'])) return null;
         $file = $_FILES[$field];
-        $allowed = ['image/jpeg', 'image/png', 'image/jpg'];
         $maxSize = 3 * 1024 * 1024;
 
-        if (!in_array($file['type'], $allowed)) return null;
-        if ($file['size'] > $maxSize) return null;
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK ||
+            !is_uploaded_file($file['tmp_name']) ||
+            (int)$file['size'] <= 0 ||
+            (int)$file['size'] > $maxSize) return null;
 
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $name = 'gallery_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+        if (!isset($mimeToExt[$mime])) return null;
+        $imageInfo = @getimagesize($file['tmp_name']);
+        if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) return null;
+
+        $name = 'gallery_' . bin2hex(random_bytes(16)) . '.' . $mimeToExt[$mime];
         $dir = __DIR__ . '/../../public/uploads/gallery/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) return null;
 
         if (!move_uploaded_file($file['tmp_name'], $dir . $name)) return null;
         return 'uploads/gallery/' . $name;

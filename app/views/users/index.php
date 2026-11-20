@@ -45,7 +45,7 @@
                         <td><?= $u['id'] ?></td>
                         <td>
                             <?php if ($u['photo']): ?>
-                                <img src="<?= BASE_URL ?>/public/<?= Helpers::e($u['photo']) ?>" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">
+                                <img src="<?= Helpers::e(Helpers::privateMediaUrl($u['photo'])) ?>" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">
                             <?php else: ?>
                                 <div style="width:40px;height:40px;border-radius:50%;background:#eee;display:flex;align-items:center;justify-content:center;">
                                     <i class="bi bi-person"></i>

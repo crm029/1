@@ -77,55 +77,66 @@ class ProfileController extends Controller {
     public function uploadPhoto() {
         Auth::requireRole(['super_admin', 'admin', 'secretary', 'operator', 'accountant', 'content_manager']);
         Helpers::verifyCsrf();
-        
-        if (empty($_FILES['photo']['name'])) {
+
+        if (empty($_FILES['photo']['name']) || !isset($_FILES['photo']['tmp_name'])) {
             $_SESSION['error'] = 'عکسی انتخاب نشده';
             return $this->redirect(BASE_URL . '/profile');
         }
-        
+
         $model = new User();
         $user = $model->findById(Auth::id());
-        
-        $file = $_FILES['photo'];
-        $allowed = ['image/jpeg', 'image/png', 'image/jpg'];
-        $maxSize = 2 * 1024 * 1024;
-        
-        if (!in_array($file['type'], $allowed)) {
-            $_SESSION['error'] = 'فرمت عکس باید jpg یا png باشد';
+        if (!$user || !preg_match('/^09[0-9]{9}$/', $user['mobile'] ?? '')) {
+            $_SESSION['error'] = 'اطلاعات حساب کاربری معتبر نیست';
             return $this->redirect(BASE_URL . '/profile');
         }
-        
-        if ($file['size'] > $maxSize) {
+
+        $file = $_FILES['photo'];
+        $maxSize = 2 * 1024 * 1024;
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK ||
+            !is_uploaded_file($file['tmp_name']) ||
+            (int)$file['size'] <= 0 ||
+            (int)$file['size'] > $maxSize) {
             $_SESSION['error'] = 'حجم عکس نباید بیشتر از ۲ مگابایت باشد';
             return $this->redirect(BASE_URL . '/profile');
         }
-        
-        // پوشه: uploads/users/{mobile}/
+
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $mimeToExt = ['image/jpeg' => 'jpg', 'image/png' => 'png'];
+        if (!isset($mimeToExt[$mime])) {
+            $_SESSION['error'] = 'فرمت عکس باید jpg یا png باشد';
+            return $this->redirect(BASE_URL . '/profile');
+        }
+        $imageInfo = @getimagesize($file['tmp_name']);
+        if (!$imageInfo || ($imageInfo['mime'] ?? '') !== $mime) {
+            $_SESSION['error'] = 'محتوای فایل تصویر معتبر نیست';
+            return $this->redirect(BASE_URL . '/profile');
+        }
+
         $mobile = $user['mobile'];
         $dir = __DIR__ . '/../../public/uploads/users/' . $mobile . '/';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+            $_SESSION['error'] = 'امکان ایجاد پوشه ذخیره عکس وجود ندارد';
+            return $this->redirect(BASE_URL . '/profile');
         }
-        
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $filename = 'avatar.' . $ext;
+
+        $filename = 'avatar_' . bin2hex(random_bytes(16)) . '.' . $mimeToExt[$mime];
         $fullPath = $dir . $filename;
-        
-        // حذف عکس قبلی (هر فرمتی)
-        foreach (glob($dir . 'avatar.*') as $oldFile) {
-            @unlink($oldFile);
-        }
-        
         if (!move_uploaded_file($file['tmp_name'], $fullPath)) {
             $_SESSION['error'] = 'خطا در آپلود عکس';
             return $this->redirect(BASE_URL . '/profile');
         }
-        
+
         $relativePath = 'uploads/users/' . $mobile . '/' . $filename;
         $model->edit(Auth::id(), ['photo' => $relativePath]);
-        
+
+        // Keep the previous avatar until the new file is safely stored and referenced.
+        foreach (glob($dir . 'avatar_*') ?: [] as $oldFile) {
+            if (basename($oldFile) !== $filename) @unlink($oldFile);
+        }
+
         (new ActivityLog())->log('change_photo', 'تغییر عکس پروفایل', 'users', Auth::id());
-        
+
         $_SESSION['success'] = 'عکس پروفایل با موفقیت تغییر کرد';
         return $this->redirect(BASE_URL . '/profile');
     }

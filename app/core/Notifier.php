@@ -80,7 +80,7 @@ class Notifier {
 
         $sender = $model->fetchOne("SELECT setting_value FROM settings WHERE setting_key = 'sms_sender' LIMIT 1");
         $username = $model->fetchOne("SELECT setting_value FROM settings WHERE setting_key = 'sms_username' LIMIT 1");
-        $password = $model->fetchOne("SELECT setting_value FROM settings WHERE setting_key = 'sms_password' LIMIT 1');
+        $password = $model->fetchOne("SELECT setting_value FROM settings WHERE setting_key = 'sms_password' LIMIT 1");
 
         if (empty($sender['setting_value']) || empty($username['setting_value']) || empty($password['setting_value'])) {
             return ['status' => 'error', 'message' => 'تنظیمات پیامک ۰۰۹۸ کامل نیست'];

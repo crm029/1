@@ -16,6 +16,13 @@ Disallow: /backups
 Disallow: /profile
 Disallow: /logs
 Disallow: /content
+Disallow: /services
+Disallow: /service-categories
+Disallow: /holidays
+Disallow: /discounts
+Disallow: /notification-templates
+Disallow: /consultations
+Disallow: /cron
 Disallow: /bot-api
 
 Sitemap: https://nayrica.ir/sitemap.xml

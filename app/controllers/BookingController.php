@@ -666,7 +666,7 @@ $this->redirect(BASE_URL . '/booking/success');
         $ext = $mimeToExt[$mime];
         $name = 'receipt_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
         $dir = __DIR__ . '/../../public/uploads/receipts/';
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
+        if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) return null;
         if (!move_uploaded_file($file['tmp_name'], $dir . $name)) return null;
         return 'uploads/receipts/' . $name;
     }
